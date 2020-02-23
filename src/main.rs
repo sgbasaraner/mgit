@@ -121,5 +121,5 @@ fn repo_dir<P: AsRef<Path>>(repo: &Repository, paths: &Vec<P>, mkdir: bool) -> O
 
     if !mkdir { return None; }
 
-    return fs::create_dir(&repo_path).ok().and_then(|_| { Some(repo_path) });
+    return fs::create_dir_all(&repo_path).ok().and_then(|_| { Some(repo_path) });
 }
