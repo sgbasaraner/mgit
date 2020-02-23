@@ -77,7 +77,7 @@ fn write_repo_file(repo: &Repository, file_name: &str, content: &str) {
     assert!(file_path.is_some());
 
     let mut file = match File::create(&file_path.unwrap()) {
-        Err(why) => panic!("couldn't create {} file", file_name),
+        Err(_) => panic!("couldn't create {} file", file_name),
         Ok(file) => file,
     };
     assert!(file.write_all(content.as_bytes()).is_ok());
