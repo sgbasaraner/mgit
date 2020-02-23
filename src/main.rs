@@ -1,4 +1,6 @@
 use std::fs;
+use std::fs::File;
+use std::io::prelude::*;
 use std::path::PathBuf;
 use std::path::Path;
 use structopt::StructOpt;
@@ -21,55 +23,73 @@ fn main() {
 }
 
 fn init(path: PathBuf) {
-    println!("{:#?}", path);
+    Repository::new(path);
 }
 
 struct Repository {
     worktree: PathBuf,
     gitdir: PathBuf,
-    conf: Option<Ini>
+    conf: Ini
 }
 
 impl Repository {
     fn new(path: PathBuf) -> Repository {
+        // path should either be empty or a directory
+        if path.exists() && !path.is_dir() {
+            panic!("{:#?} is not a directory!", path);
+        } else {
+            fs::create_dir(&path).unwrap_err();
+        }
+
         let gitdir = path.join(".git");
-        if !gitdir.is_dir() {
-            panic!("Not a Git repository {:#?}", path);
-        }
-
+        
         let repo = Repository {
-            worktree: path,
-            gitdir: gitdir,
-            conf: None
+            worktree: path.to_path_buf(),
+            gitdir: gitdir.to_path_buf(),
+            conf: repo_default_config()
         };
 
-        // # Read configuration file in .git/config
-        // self.conf = configparser.ConfigParser()
-        // cf = repo_file(self, "config")
+        // create git directories
+        assert!(repo_dir(&repo, &vec!["branches"], true).is_some());
+        assert!(repo_dir(&repo, &vec!["objects"], true).is_some());
+        assert!(repo_dir(&repo, &vec!["refs", "tags"], true).is_some());
+        assert!(repo_dir(&repo, &vec!["refs", "heads"], true).is_some());
 
-        // if cf and os.path.exists(cf):
-        //         self.conf.read([cf])
-        // elif not force:
-        //     raise Exception("Configuration file missing")
+        // .git/description
+        let description = "Unnamed repository; edit this file 'description' to name the repository.\n";
+        write_repo_file(&repo, "description", description);
 
-        // if not force:
-        //     vers = int(self.conf.get("core", "repositoryformatversion"))
-        //     if vers != 0:
-        //         raise Exception("Unsupported repositoryformatversion %s" % vers)
+        // .git/HEAD
+        let head = "ref: refs/heads/master\n";
+        write_repo_file(&repo, "HEAD", head);
 
+        // config
+        let mut config_bytes: Vec<u8> = vec![];
+        assert!(repo.conf.write_to(&mut config_bytes).is_ok());
+        write_repo_file(&repo, "config", &std::str::from_utf8(&config_bytes).unwrap());
 
-        // TODO: implement
-        let conf = match Ini::load_from_file(&path) {
-            Ok(config) => config,
-            Err(_) => panic!("Configuration file missing")
-        };
-
-        Repository {
-            worktree: path,
-            gitdir: gitdir,
-            conf: conf
-        }
+        return repo;
     }
+}
+
+fn write_repo_file(repo: &Repository, file_name: &str, content: &str) {
+    let file_path = repo_file(&repo, &vec![file_name], false);
+    assert!(file_path.is_some());
+
+    let mut file = match File::create(&file_path.unwrap()) {
+        Err(why) => panic!("couldn't create {} file", file_name),
+        Ok(file) => file,
+    };
+    assert!(file.write_all(content.as_bytes()).is_ok());
+}
+
+fn repo_default_config() -> Ini {
+    let mut ini = Ini::new();
+    ini.with_section(Some("core"))
+        .set("repositoryformatversion", "0")
+        .set("filemode", "false")
+        .set("bare", "false");
+    ini
 }
 
 fn repo_path<P: AsRef<Path>>(repo: &Repository, paths: &Vec<P>) -> PathBuf {
