@@ -25,9 +25,7 @@ fn main() {
 }
 
 fn init(path: PathBuf) {
-    repo_find_or_panic(path);
-    println!("No issues!");
-    // Repository::new(path);
+    Repository::new(path);
 }
 
 struct Repository {
