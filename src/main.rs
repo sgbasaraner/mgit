@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt;
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
@@ -23,7 +25,9 @@ fn main() {
 }
 
 fn init(path: PathBuf) {
-    Repository::new(path);
+    repo_find_or_panic(path);
+    println!("No issues!");
+    // Repository::new(path);
 }
 
 struct Repository {
@@ -32,7 +36,31 @@ struct Repository {
     conf: Ini
 }
 
+#[derive(Debug)]
+enum RepoInitError {
+    NotAGitRepository,
+    ConfigFileMissing,
+    UnsupportedVersion
+}
+
+impl std::fmt::Display for RepoInitError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,"{}",self.description())
+    }
+}
+
+impl Error for RepoInitError {
+    fn description(&self) -> &str {
+        match self {
+            RepoInitError::NotAGitRepository => "Not a git repository.",
+            RepoInitError::ConfigFileMissing => "Configuration file missing.",
+            RepoInitError::UnsupportedVersion => "Unsupported repository version.",
+        }
+    }
+}
+
 impl Repository {
+
     fn new(path: PathBuf) -> Repository {
         // path should either be empty or a directory
         if path.exists() && !path.is_dir() {
@@ -40,14 +68,8 @@ impl Repository {
         } else {
             fs::create_dir(&path).unwrap_err();
         }
-
-        let gitdir = path.join(".git");
         
-        let repo = Repository {
-            worktree: path.to_path_buf(),
-            gitdir: gitdir.to_path_buf(),
-            conf: repo_default_config()
-        };
+        let repo = Repository::naive_from_path(path.to_path_buf());
 
         // create git directories
         assert!(repo_dir(&repo, &vec!["branches"], true).is_some());
@@ -69,6 +91,42 @@ impl Repository {
         write_repo_file(&repo, "config", &std::str::from_utf8(&config_bytes).unwrap());
 
         return repo;
+    }
+
+    fn from_path(path: PathBuf) -> Result<Repository, RepoInitError> {
+        let repo = Repository::naive_from_path(path.to_path_buf());
+        if !repo.gitdir.is_dir() { return Err(RepoInitError::NotAGitRepository); }
+
+        let config_file = repo_file(&repo, &vec![path.join("config").to_path_buf()], false);
+        if config_file.is_none() { return Err(RepoInitError::ConfigFileMissing); }
+
+        let parsed_config = Ini::load_from_file(&config_file.unwrap());
+        let config = match parsed_config {
+            Ok(c) => c,
+            Err(e) => {
+                println!("{}", e);
+                return Err(RepoInitError::ConfigFileMissing);
+            },
+        };
+
+        let version = config.section(Some("core")).and_then(|x| x.get("repositoryformatversion").and_then(|y| y.parse::<i32>().ok() ));
+        if version.is_none() || version.unwrap() != 0 { return Err(RepoInitError::UnsupportedVersion); }
+
+        return Ok(Repository {
+            worktree: repo.worktree.to_path_buf(),
+            gitdir: repo.gitdir.to_path_buf(),
+            conf: config
+        });
+    }
+
+    fn naive_from_path(path: PathBuf) -> Repository {
+        let gitdir = path.join(".git/");
+        
+        Repository {
+            worktree: path.to_path_buf(),
+            gitdir: gitdir.to_path_buf(),
+            conf: repo_default_config()
+        }
     }
 }
 
@@ -125,7 +183,15 @@ fn repo_dir<P: AsRef<Path>>(repo: &Repository, paths: &Vec<P>, mkdir: bool) -> O
 }
 
 fn repo_find(path: PathBuf) -> Option<Repository> {
-    if path.join(".git").is_dir() { return Some(Repository::new(path)); }
+    if path.join(".git/").is_dir() { 
+        return match Repository::from_path(path) {
+            Ok(repo) => Some(repo),
+            Err(e) => {
+                println!("{}", e);
+                None
+            },
+        }
+    }
 
     let parent = path.parent();
     return match parent {
