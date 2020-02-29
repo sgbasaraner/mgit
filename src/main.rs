@@ -123,3 +123,17 @@ fn repo_dir<P: AsRef<Path>>(repo: &Repository, paths: &Vec<P>, mkdir: bool) -> O
 
     return fs::create_dir_all(&repo_path).ok().and_then(|_| { Some(repo_path) });
 }
+
+fn repo_find(path: PathBuf) -> Option<Repository> {
+    if path.join(".git").is_dir() { return Some(Repository::new(path)); }
+
+    let parent = path.parent();
+    return match parent {
+        Some(p) => repo_find(p.to_path_buf()),
+        None => None,
+    }
+}
+
+fn repo_find_or_panic(path: PathBuf) -> Repository {
+    return repo_find(path).expect("No git directory.");
+}
