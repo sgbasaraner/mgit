@@ -1,6 +1,8 @@
 mod repository;
+mod object;
 
 use repository::Repository;
+use object::Object;
 use std::path::PathBuf;
 use structopt::StructOpt;
 

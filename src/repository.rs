@@ -127,7 +127,7 @@ fn repo_default_config() -> Ini {
     ini
 }
 
-fn repo_path<P: AsRef<Path>>(repo: &Repository, paths: &Vec<P>) -> PathBuf {
+pub fn repo_path<P: AsRef<Path>>(repo: &Repository, paths: &Vec<P>) -> PathBuf {
     let mut path = repo.gitdir.clone();
     for p in paths {
         path.push(p);
